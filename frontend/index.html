@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Room Detection - Innergy</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 8px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 24px;
+        }
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            background: white;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+        }
+        .upload-area:hover, .upload-area.dragover {
+            border-color: #4a90d9;
+            background: #f8fafc;
+        }
+        .upload-area input {
+            display: none;
+        }
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+        .canvas-container {
+            position: relative;
+            margin-top: 24px;
+            background: white;
+            border-radius: 8px;
+            padding: 16px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .canvas-wrapper {
+            position: relative;
+            display: inline-block;
+        }
+        canvas {
+            display: block;
+            max-width: 100%;
+            height: auto;
+        }
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+        }
+        .stats {
+            margin-top: 16px;
+            padding: 16px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .stats h3 {
+            margin: 0 0 12px 0;
+            font-size: 14px;
+            text-transform: uppercase;
+            color: #666;
+        }
+        .room-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 8px;
+        }
+        .room-item {
+            padding: 8px 12px;
+            background: white;
+            border-radius: 4px;
+            border-left: 4px solid;
+            font-size: 14px;
+        }
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            color: #666;
+        }
+        .spinner {
+            width: 24px;
+            height: 24px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #4a90d9;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 12px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .error {
+            color: #dc3545;
+            padding: 16px;
+            background: #fff5f5;
+            border-radius: 8px;
+            margin-top: 16px;
+        }
+        .controls {
+            display: flex;
+            gap: 16px;
+            margin-top: 16px;
+            flex-wrap: wrap;
+        }
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .control-group label {
+            font-size: 14px;
+            color: #666;
+        }
+        .control-group input[type="range"] {
+            width: 120px;
+        }
+        button {
+            padding: 8px 16px;
+            background: #4a90d9;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #357abd;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .json-output {
+            margin-top: 16px;
+            padding: 16px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useRef, useEffect } = React;
+
+        const COLORS = [
+            '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', 
+            '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F'
+        ];
+
+        const API_URL = 'http://localhost:8000';
+
+        function App() {
+            const [image, setImage] = useState(null);
+            const [imageUrl, setImageUrl] = useState(null);
+            const [rooms, setRooms] = useState([]);
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState(null);
+            const [imageSize, setImageSize] = useState(null);
+            const [threshold, setThreshold] = useState(0.7);
+            const [showJson, setShowJson] = useState(false);
+            const [dragover, setDragover] = useState(false);
+            
+            const canvasRef = useRef(null);
+            const overlayRef = useRef(null);
+            const fileInputRef = useRef(null);
+
+            const handleFile = (file) => {
+                if (!file || !file.type.startsWith('image/')) {
+                    setError('Please upload an image file (PNG, JPG)');
+                    return;
+                }
+                setImage(file);
+                setImageUrl(URL.createObjectURL(file));
+                setRooms([]);
+                setError(null);
+            };
+
+            const handleDrop = (e) => {
+                e.preventDefault();
+                setDragover(false);
+                const file = e.dataTransfer.files[0];
+                handleFile(file);
+            };
+
+            const handleDragOver = (e) => {
+                e.preventDefault();
+                setDragover(true);
+            };
+
+            const handleDragLeave = () => {
+                setDragover(false);
+            };
+
+            const detectRooms = async () => {
+                if (!image) return;
+                
+                setLoading(true);
+                setError(null);
+                
+                const formData = new FormData();
+                formData.append('file', image);
+                
+                try {
+                    const response = await fetch(
+                        `${API_URL}/detect?threshold=${threshold}`,
+                        { method: 'POST', body: formData }
+                    );
+                    
+                    if (!response.ok) {
+                        const err = await response.json();
+                        throw new Error(err.detail || 'Detection failed');
+                    }
+                    
+                    const data = await response.json();
+                    setRooms(data.rooms);
+                    setImageSize(data.image_size);
+                } catch (err) {
+                    setError(err.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            // Draw overlay when rooms or image changes
+            useEffect(() => {
+                if (!imageUrl || !overlayRef.current || !canvasRef.current) return;
+                
+                const canvas = canvasRef.current;
+                const overlay = overlayRef.current;
+                const ctx = overlay.getContext('2d');
+                
+                // Match overlay size to displayed image
+                overlay.width = canvas.width;
+                overlay.height = canvas.height;
+                
+                ctx.clearRect(0, 0, overlay.width, overlay.height);
+                
+                if (!rooms.length || !imageSize) return;
+                
+                const scaleX = canvas.width / imageSize.width;
+                const scaleY = canvas.height / imageSize.height;
+                
+                rooms.forEach((room, idx) => {
+                    const color = COLORS[idx % COLORS.length];
+                    const bbox = room.bbox_pixels;
+                    
+                    // Draw bounding box
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(
+                        bbox.x1 * scaleX,
+                        bbox.y1 * scaleY,
+                        (bbox.x2 - bbox.x1) * scaleX,
+                        (bbox.y2 - bbox.y1) * scaleY
+                    );
+                    
+                    // Draw polygon if available
+                    if (room.vertices && room.vertices.length > 2) {
+                        ctx.beginPath();
+                        ctx.moveTo(room.vertices[0][0] * scaleX, room.vertices[0][1] * scaleY);
+                        room.vertices.forEach(([x, y]) => {
+                            ctx.lineTo(x * scaleX, y * scaleY);
+                        });
+                        ctx.closePath();
+                        ctx.fillStyle = color + '33';
+                        ctx.fill();
+                        ctx.stroke();
+                    }
+                    
+                    // Draw label
+                    ctx.fillStyle = color;
+                    ctx.font = 'bold 14px sans-serif';
+                    ctx.fillText(
+                        `Room ${idx + 1} (${(room.confidence * 100).toFixed(0)}%)`,
+                        bbox.x1 * scaleX + 4,
+                        bbox.y1 * scaleY - 6
+                    );
+                });
+            }, [rooms, imageSize, imageUrl]);
+
+            // Handle image load to set canvas dimensions
+            const handleImageLoad = (e) => {
+                const canvas = canvasRef.current;
+                const overlay = overlayRef.current;
+                canvas.width = e.target.naturalWidth;
+                canvas.height = e.target.naturalHeight;
+                
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(e.target, 0, 0);
+                
+                overlay.width = canvas.width;
+                overlay.height = canvas.height;
+            };
+
+            // Format output for PRD spec
+            const getPrdOutput = () => {
+                return rooms.map(room => ({
+                    id: room.id,
+                    bounding_box: room.bounding_box,
+                    name_hint: room.name_hint
+                }));
+            };
+
+            return (
+                <div className="container">
+                    <h1>🏠 Room Detection AI</h1>
+                    <p className="subtitle">Upload a blueprint to automatically detect room boundaries</p>
+                    
+                    <div 
+                        className={`upload-area ${dragover ? 'dragover' : ''}`}
+                        onClick={() => fileInputRef.current?.click()}
+                        onDrop={handleDrop}
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                    >
+                        <div className="upload-icon">📁</div>
+                        <p>Drop a blueprint image here, or click to select</p>
+                        <p style={{fontSize: '14px', color: '#999'}}>Supports PNG, JPG</p>
+                        <input 
+                            ref={fileInputRef}
+                            type="file" 
+                            accept="image/*"
+                            onChange={(e) => handleFile(e.target.files[0])}
+                        />
+                    </div>
+
+                    {imageUrl && (
+                        <>
+                            <div className="controls">
+                                <div className="control-group">
+                                    <label>Confidence: {threshold}</label>
+                                    <input 
+                                        type="range" 
+                                        min="0.1" 
+                                        max="0.95" 
+                                        step="0.05"
+                                        value={threshold}
+                                        onChange={(e) => setThreshold(parseFloat(e.target.value))}
+                                    />
+                                </div>
+                                <button onClick={detectRooms} disabled={loading}>
+                                    {loading ? 'Detecting...' : 'Detect Rooms'}
+                                </button>
+                                {rooms.length > 0 && (
+                                    <button onClick={() => setShowJson(!showJson)}>
+                                        {showJson ? 'Hide' : 'Show'} JSON
+                                    </button>
+                                )}
+                            </div>
+
+                            <div className="canvas-container">
+                                {loading ? (
+                                    <div className="loading">
+                                        <div className="spinner"></div>
+                                        Processing blueprint...
+                                    </div>
+                                ) : (
+                                    <div className="canvas-wrapper">
+                                        <img 
+                                            src={imageUrl} 
+                                            onLoad={handleImageLoad}
+                                            style={{display: 'none'}}
+                                            alt=""
+                                        />
+                                        <canvas ref={canvasRef}></canvas>
+                                        <canvas ref={overlayRef} id="overlay"></canvas>
+                                    </div>
+                                )}
+                            </div>
+
+                            {error && <div className="error">❌ {error}</div>}
+
+                            {rooms.length > 0 && (
+                                <div className="stats">
+                                    <h3>Detected {rooms.length} Rooms</h3>
+                                    <div className="room-list">
+                                        {rooms.map((room, idx) => (
+                                            <div 
+                                                key={room.id}
+                                                className="room-item"
+                                                style={{borderColor: COLORS[idx % COLORS.length]}}
+                                            >
+                                                <strong>Room {idx + 1}</strong><br/>
+                                                Confidence: {(room.confidence * 100).toFixed(1)}%<br/>
+                                                <span style={{fontSize: '12px', color: '#999'}}>
+                                                    Box: [{room.bounding_box.map(n => Math.round(n)).join(', ')}]
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {showJson && rooms.length > 0 && (
+                                <div className="json-output">
+                                    {JSON.stringify(getPrdOutput(), null, 2)}
+                                </div>
+                            )}
+                        </>
+                    )}
+                </div>
+            );
+        }
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>
