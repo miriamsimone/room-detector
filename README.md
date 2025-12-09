@@ -1,6 +1,19 @@
 # Innergy Room Detection Service
 
-Minimal web app for automatic room boundary detection on architectural blueprints.
+An AI-powered web application for automatic room boundary detection on architectural blueprints. Upload floor plans and instantly get precise room segmentation with bounding boxes, polygonal boundaries, and confidence scores. Built with a PyTorch Mask R-CNN model for accurate detection of room boundaries, walls, and spaces in architectural drawings.
+
+![Room Detection Example](docs/screenshot.png)
+
+## Features
+
+- **Automatic Room Detection**: Upload any blueprint image and get instant room boundary detection
+- **Visual Overlays**: Color-coded bounding boxes and polygonal outlines for each detected room
+- **High Accuracy**: Mask R-CNN with ResNet50-FPN backbone trained on architectural floor plans
+- **Confidence Scoring**: Adjustable detection threshold to control sensitivity
+- **Export Ready**: JSON output with normalized coordinates (0-1000 range) for integration
+- **Overlap Filtering**: Automatically merges overlapping detections for cleaner results
+- **Real-time Processing**: CPU/GPU inference in 1-5 seconds per image
+- **No Build Required**: Single-file React frontend with zero dependencies
 
 ## Quick Start
 
