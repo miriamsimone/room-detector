@@ -93,6 +93,38 @@ innergy-rooms/
 - **Frontend**: React (CDN, no build)
 - **Model**: Mask R-CNN with ResNet50-FPN backbone
 
+## Deployment
+
+### Docker (Recommended)
+
+Run the entire stack with Docker Compose:
+
+```bash
+# Make sure model file is in backend/
+cp /path/to/maskrcnn_best.pth backend/
+
+# Start services
+docker-compose up -d
+
+# Check status
+docker-compose ps
+docker-compose logs -f
+```
+
+Visit `http://localhost`
+
+### AWS EC2 Deployment
+
+See [DEPLOY.md](DEPLOY.md) for complete AWS deployment guide.
+
+Quick setup:
+```bash
+# On EC2 instance
+wget https://raw.githubusercontent.com/miriamsimone/room-detector/main/scripts/setup-ec2.sh
+sudo chmod +x setup-ec2.sh
+sudo ./setup-ec2.sh
+```
+
 ## Notes
 
 - Model automatically uses GPU if available, falls back to CPU
